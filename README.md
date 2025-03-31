@@ -20,10 +20,11 @@ npm i
 
 Создайте новое приложение с помощью `vite` 
 ```sh
-npm create wagmi@latest
+npm create vite@latest
 ```
 
-Введите имя приложения app и выберите в меню React и Vite.  
+Введите имя приложения app и выберите в меню React и JavaScript. 
+
 
 Установите зависимости, запустите приложение, проверьте его работу. 
 ```sh
@@ -49,96 +50,70 @@ require("@nomicfoundation/hardhat-toolbox");
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
-  solidity: "0.8.19",
+  solidity: "0.8.28",
   paths: {
     artifacts: "./app/src/artifacts",
   }, 
 };
 ```
+
 Здесь мы определяем версию компилятора `solidity`, который используется для компиляции смарт-контрактов в этом проекте. 
-Важно отметить, что hardhat использует реализацию `solcjs` независимо от системного `solc`. 
+Важно отметить, что hardhat использует реализацию компилятора `solcjs`, написанного на JavaScritp. 
+Этот компилятор работает независимо от системного `solc` и можно иметь несколько версий для сравнения генерируемого кода. 
 
 Переменная `  paths: { artifacts: "./app/src/artifacts",   },` отвечает за тот путь, в который будут размещаться результаты компиляции (артифакты) смарт-контрактов. 
 Мы размещаем их в папке фронтенд приложения, т.к. деплой и обращение к публичным методам смарт-контракта будут проводиться из пользовательского интерфейса. 
 
 ## 3 Написание и компиляция смарт-контрактов
-Напишем простой смарт-контракт, который выдает токены всем желающим. 
-Здесь под токеном мы понимаем некоторую условную единицу, например виртуальную шоколадку в вендинговой машине. 
-Сам токен ничего не стоит, однако необходимо уплатить комиссию за размещение (деплой) смарт-контракта и вызов его публичных методов. 
-При размещении смарт-контракта в локальной или тестовой сети эта комиссия ничего не стоит. 
-Однако при размещении в настоящей сети `Ethereum mainnet` за каждую транзакцию нужно расплачиваться реальной криптовалютой `ETH`.  
 
-В корне проекта создайте директорию `contracts/`, а в ней файл `Token.sol`. 
+Компания Open Zeppelin предоставляет исходные коды безопасных реализаций для многих стандартных спецификаций смарт-контрактов. 
+Вам не нужно наступать на грабли и беспокоиться об уязвимостях, которые могут привести к потере средств. 
+В Open Zeppelin действует программа bounty bug - за каждую найденную уязвимость выплачивается вознаграждение. 
+Такой подход позволяет привлечь специалистов со всего света для аудита кода и сведения вероятности потери средств практически к нулю.   
+Установите библиотеку с помощью команды:  
+
+```sh
+npm install @openzeppelin/contracts
+```
+
+После установки вы можете использовать контракты из библиотеки, импортировав их. 
+За размещение (деплой) смарт-контракта и вызов его публичных методов необходимо уплатить комиссию. 
+При размещении смарт-контракта в локальной тестовой сети эта комиссия ничего не стоит, не нужно использовать faucet. 
+При размещении в сети `Ethereum sepolia` используется тестовая криптовалюта `ETH`.  
+При размещении в сети `Ethereum mainnet` за каждую транзакцию нужно расплачиваться реальной криптовалютой `ETH`.  
+
+ERC-721 - это стандарт для представления права собственности на невзаимозаменяемые токены, например недвижимость или предметы коллекционирования.
+
+ERC-721 является более сложным стандартом, чем ERC-20, с множеством дополнительных расширений и разделен на несколько контрактов. Открытые контракты Zeppelin обеспечивают гибкость в отношении их сочетания, а также пользовательских полезных расширений.  
+
+Рассмотрим пример, в котором ERC-721 используется для отслеживания игровых предметов со своими уникальными свойствами. Всякий раз, когда игрок получит какой-либо предмет, он будет отчеканен и отправлен ему. Игроки могут свободно хранить свои токены или обменивать их с другими людьми по своему усмотрению, как и с любым другим активом в блокчейне! Пожалуйста, обратите внимание, что любая учетная запись может использовать awardItem для чеканки предметов. Чтобы ограничить количество учетных записей, которые могут чеканить предметы, можно добавить [контроль доступа](https://docs.openzeppelin.com/contracts/5.x/access-control). 
+
+В корне проекта создайте директорию `contracts/`, а в ней файл `GameItem.sol`. 
 Наполните содержимое этого файла: 
-```js
-//SPDX-License-Identifier: UNLICENSED
 
-// Solidity files have to start with this pragma.
-// It will be used by the Solidity compiler to validate its version.
-pragma solidity ^0.8.0;
+```solidity
+// contracts/GameItem.sol
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
 
+import {ERC721URIStorage, ERC721} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 
-// This is the main building block for smart contracts.
-contract Token {
-    // Some string type variables to identify the token.
-    string public name = "My Hardhat Token";
-    string public symbol = "MHT";
+contract GameItem is ERC721URIStorage {
+    uint256 private _nextTokenId;
 
-    // The fixed amount of tokens, stored in an unsigned integer type variable.
-    uint256 public totalSupply = 1000000;
+    constructor() ERC721("GameItem", "ITM") {}
 
-    // An address type variable is used to store ethereum accounts.
-    address public owner;
+    function awardItem(address player, string memory tokenURI) public returns (uint256) {
+        uint256 tokenId = _nextTokenId++;
+        _mint(player, tokenId);
+        _setTokenURI(tokenId, tokenURI);
 
-    // A mapping is a key/value map. Here we store each account's balance.
-    mapping(address => uint256) balances;
-
-    // The Transfer event helps off-chain applications understand
-    // what happens within your contract.
-    event Transfer(address indexed _from, address indexed _to, uint256 _value);
-
-    /**
-     * Contract initialization.
-     */
-    constructor() {
-        // The totalSupply is assigned to the transaction sender, which is the
-        // account that is deploying the contract.
-        balances[msg.sender] = totalSupply;
-        owner = msg.sender;
-    }
-
-    /**
-     * A function to transfer tokens.
-     *
-     * The `external` modifier makes a function *only* callable from *outside*
-     * the contract.
-     */
-    function transfer(address to, uint256 amount) external {
-        // Check if the transaction sender has enough tokens.
-        // If `require`'s first argument evaluates to `false` then the
-        // transaction will revert.
-        require(balances[msg.sender] >= amount, "Not enough tokens");
-
-        // Transfer the amount.
-        balances[msg.sender] -= amount;
-        balances[to] += amount;
-
-        // Notify off-chain applications of the transfer.
-        emit Transfer(msg.sender, to, amount);
-    }
-
-    /**
-     * Read only function to retrieve the token balance of a given account.
-     *
-     * The `view` modifier indicates that it doesn't modify the contract's
-     * state, which allows us to call it without executing a transaction.
-     */
-    function balanceOf(address account) external view returns (uint256) {
-        return balances[account];
+        return tokenId;
     }
 }
 ```
-Внимательно ознакомьтесь с содержимыми этого файла. 
+
+С исходным кодом смарт-контракта ERC720.sol можно ознакомиться на сайте [github](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/token/ERC721/ERC721.sol). 
 Для подсветки синтаксиса и других полезностей установите расширение [hardhat](https://hardhat.org/hardhat-vscode/docs/overview) для `VSCode`.  
 
 Скомпилируйте контракт командой: 
@@ -151,24 +126,47 @@ Compiled 1 Solidity file successfully (evm target: paris).
 ```
 В корне проекта появится папка `cache`, а в папке `app/src/artifacts` - результаты компиляции. 
 
+## 3.1 Использование IPFS для хранения информации об NFT
+Скачайте IPFS Desktop App с официальной [страницы](https://github.com/ipfs/ipfs-desktop/releases). 
+Создайте два файла:
+1) Изображение NFT
+2) Описание в текстовом формате, например:
+```
+{
+    "name": "Thor's hammer",
+    "description": "Mjölnir, the legendary hammer of the Norse god of thunder.",
+    "image": "https://bafybeibren22musqfs36r2gg4pz6i3b5hvqdsa7w3ot5w2s27jduriiyxe.ipfs.dweb.link?filename=tor_hammer.png",
+    "strength": 20
+}
+``` 
+Импортируйте сначала изображение с помощью кнопки + Импорт: 
+
+![img](/img/1.jpg)
+
+Скопируйте ссылку на изображение и вставьте ее в поле "image" вашего текстового файла: 
+
+![img](/img/2.jpg)
+
+Затем импортируйте текстовый файл. 
+Его ссылка пригодится для тестирования смарт-контракта. 
+
 ## 4 Тестирование смарт-контрактов с Hardhat
 
 Перед размещением контракта в тестовой сети полезно протестировать его инструментами hardhat. 
 Проблема заключается в том, что взаимодействие с контрактом осуществляется через интерфейс сторонней библиотеки, например `ethers` или `web3`. 
 В hardhat эта проблема решается с помощью собственной реализации интерфейса библиотеки `ethers`, которая эмулирует наличие тестовой сети.  
 
-В корне проекта создайте папку `test`, а в ней файл `Token.js`. 
+В корне проекта создайте папку `test`, а в ней файл `GameItem.js`. 
 Наполните его содержимое: 
 
 ```js
 const { expect } = require("chai");
-const { ethers } = require("hardhat");
 
 describe("Token contract", function () {
   it("Deployment should assign the total supply of tokens to the owner", async function () {
     const [owner] = await ethers.getSigners();
 
-    const hardhatToken = await ethers.deployContract("Token");
+    const hardhatToken = await ethers.deployContract("MyNFT");
 
     const ownerBalance = await hardhatToken.balanceOf(owner.address);
     expect(await hardhatToken.totalSupply()).to.equal(ownerBalance);
