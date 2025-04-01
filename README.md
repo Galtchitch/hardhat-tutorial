@@ -147,8 +147,8 @@ Compiled 1 Solidity file successfully (evm target: paris).
 
 ![img](/img/2.jpg)
 
-Затем импортируйте текстовый файл. 
-Его ссылка пригодится для тестирования смарт-контракта. 
+Затем импортируйте текстовый файл, содержащий описание NFT. 
+Ссылка на этот текстовый файл пригодится нам для последующего тестирования смарт-контракта. 
 
 ## 4 Тестирование смарт-контрактов с Hardhat
 
@@ -161,15 +161,13 @@ Compiled 1 Solidity file successfully (evm target: paris).
 
 ```js
 const { expect } = require("chai");
+const { ethers } = require("hardhat");
 
 describe("Token contract", function () {
-  it("Deployment should assign the total supply of tokens to the owner", async function () {
-    const [owner] = await ethers.getSigners();
-
-    const hardhatToken = await ethers.deployContract("MyNFT");
-
-    const ownerBalance = await hardhatToken.balanceOf(owner.address);
-    expect(await hardhatToken.totalSupply()).to.equal(ownerBalance);
+  it("Should return name after deployment", async function () {
+    const myNftContract = await ethers.deployContract("GameItem");
+    const deployedName = await myNftContract.name();
+    expect(deployedName).to.equal("GameItem");
   });
 });
 ``` 
@@ -185,28 +183,33 @@ npx hardhat test
 
 ```sh
   Token contract
-    ✔ Deployment should assign the total supply of tokens to the owner
+    ✔ Should return name after deployment
 ```
 
-Добавьте еще один тест для проверки перемещения токенов между аккаунтами и выполните его: 
+Добавьте еще один тест для проверки получения токенов разными аккаунтами и выполните его: 
 ```js
-describe("Token contract", function () {
-  // ...previous test...
+  it("Should award an item to player", async function () {
+    const [ player_0, player_1 ] = await ethers.getSigners();
 
-  it("Should transfer tokens between accounts", async function() {
-    const [owner, addr1, addr2] = await ethers.getSigners();
+    // Deploy the MyNFT contract
+    const myNftContract = await ethers.deployContract("GameItem");
 
-    const hardhatToken = await ethers.deployContract("Token");
+    // Award an item to the owner
+    const tokenUri = "https://bafybeifdpy3ikwpysuu7gvur232wv2ttzff55warsbpqdqku5hzaejw3ym.ipfs.dweb.link?filename=thor_hammer.txt";
+    const testUri = "Just a test";
 
-    // Transfer 50 tokens from owner to addr1
-    await hardhatToken.transfer(addr1.address, 50);
-    expect(await hardhatToken.balanceOf(addr1.address)).to.equal(50);
+    await myNftContract.awardItem(player_0.address, tokenUri);
+    await myNftContract.awardItem(player_1.address, testUri);
 
-    // Transfer 50 tokens from addr1 to addr2
-    await hardhatToken.connect(addr1).transfer(addr2.address, 50);
-    expect(await hardhatToken.balanceOf(addr2.address)).to.equal(50);
+    // Check ownership
+    expect(await myNftContract.ownerOf(0)).to.equal(player_0.address);
+    expect(await myNftContract.ownerOf(1)).to.equal(player_1.address);
+
+    // The token URI should be the same as the one we set earlier   
+    expect(await myNftContract.tokenURI(0)).to.equal(tokenUri);
+    expect(await myNftContract.tokenURI(1)).to.equal(testUri);
+
   });
-});
 ```
 
 ## 5 Настройка кошелька и Hardhat Network
@@ -245,12 +248,13 @@ $body = '{"jsonrpc":"2.0","method":"eth_getBalance", "params": ["0xf39Fd6e51aad8
 curl.exe -d $body localhost:8545
 ```
 
-Для совершения транзакций есть более удобные инструменты, например [geth](https://geth.ethereum.org/docs/interacting-with-geth/javascript-console) или та же библиотека [ethers](https://docs.ethers.org/v5/single-page/#/v5/api/providers/jsonrpc-provider/). 
+Для совершения транзакций есть более удобные инструменты, например [geth](https://geth.ethereum.org/docs/interacting-with-geth/javascript-console) или та же библиотека [ethers](https://docs.ethers.org/v5/single-page/#/v6/api/providers/jsonrpc-provider/). 
 Однако самым удобным для пользователей, пожалуй, является кошелек, который устанавливается как расширение браузера.  
 
 Рекомендуем использовать [MetaMask](https://metamask.io/download/), т.к. он лучше всего подходит для [децентрализованных приложений](https://cryptowallet.com/academy/best-ethereum-wallets/). 
 
-Настройка кошелька 
+### 5.1 Настройка кошелька 
+
 Создайте новую сеть вручную с параметрами 
 ```
 Network name: hardhat
@@ -276,6 +280,7 @@ Nonce too high. Expected nonce to be 0 but got 2. Note that transactions can't b
 Это можно исправить, если в настройках кошелька очистить кеш: `Settings > Advanced > Clear activity tab data`. 
 
 ## 6 Размещение смарт-контракта в тестовой сети
+
 Для размещения в смарт-контрактов в сети Ethereum мы будем использовать инструмент [Hardhat Ignition](https://hardhat.org/ignition/docs/getting-started). 
 Это декларативная система, которая упрощает деплой смарт-контрактов не только в тестовой, но и в основной сети. 
 Для описания порядка размещения смарт-контракта используются модули `Ignition Modules`. 
@@ -302,10 +307,11 @@ mkdir ignition/modules
 const { buildModule } = require("@nomicfoundation/hardhat-ignition/modules");
 
 module.exports = buildModule("TokenDeploy", (mbuilder) => {
-    const account0 = mbuilder.getAccount(0);     // or account = "0x123..." 
-    const erc20_smart_contract = mbuilder.contract("Token", [], {from: account0});
-    return { erc20_smart_contract };
+    const player_0 = mbuilder.getAccount(0);     
+    const erc721_smart_contract = mbuilder.contract("GameItem", [], {from: player_0});
+    return { erc721_smart_contract };
   });
+
 ```
 
 Выполнените команду 
@@ -320,153 +326,136 @@ Deployed Addresses
 TokenDeploy#Token - 0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
 ```
 
-Этот адрес понадобится для покупки `MyHardhatToken` через пользовательский интерфейс.  
+Этот адрес понадобится для взаимодействия с размещенным экземпляром через пользовательский интерфейс.  
 Владельцем смарт-контракта по умолчанию является нулевой аккаунт сети hardhat. 
-Это свойство можно переопределить через вызов метода `getAccount` или задать адрес в виде строки. 
+
 
 
 ## 7 Разработка UI
 
-Откройте код приложения `src/App.js` и замените содержимое на следующий код. 
-
-```js
-import { useState } from 'react'
-import './App.css'
-
-function App() {
-  const [account, setAccount] = useState('')
-  const [tokens, setTokens] = useState('no')
-
-  return (
-    <>
-    <h1>Token vending machine</h1>
-    <h3>Current account {account} has {tokens} Tokens</h3>
-    </>
-  )
-}
-
-export default App
-
-```
-
-В папке app добавьте в зависимости `package.json` стабильную версию библиотеки ethers 5.7.2 
+В папке app добавьте в зависимости `package.json` стабильную версию библиотеки ethers 6.13.5 
 ```js
   "dependencies": {
     ...
-    "ethers": "^5.7.2"
+    "ethers": "^6.13.5"
     }
 ``` 
 
-Обновите зависимости, запустите приложение и проверьте его работу.  
+Установите зависимости.  
+Откройте код приложения `src/App.js` и замените содержимое на следующий код. 
 
-Добавьте кнопку для обновления баланса токенов аккаунта
 ```js
-    <button
-        onClick={(e) => {
-          e.preventDefault();
-          updateAccount();
-        }}
-      >Update Balance
-      </button>
-```
-
-Добавьте метод, который читает баланс токенов из смарт-контракта, размещенного в сети hardhat. 
-```js
-
+import { useEffect, useState } from 'react';
 import { ethers } from 'ethers';
-const provider = new ethers.providers.Web3Provider(window.ethereum);
+import './App.css';
+
 const ABI = [
-  // ERC20 Standart Read-Only Functions
-  "function balanceOf(address owner) view returns (uint256)",
-  "function decimals() view returns (uint8)",
-  "function symbol() view returns (string)",
-
-  // Authenticated Functions
-  "function transfer(address to, uint amount) returns (bool)",
-
-  // Events
-  "event Transfer(address indexed from, address indexed to, uint amount)"
+  "function tokenURI(uint256 tokenId) view returns (string)",
+  "function ownerOf(uint256 tokenId) view returns (address)",
+  "function awardItem(address player, string memory tokenURI) public returns (uint256)",
 ];
 
-// This can be an address or an ENS name
-const CONTRACT_ADDRESS = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
+function App() {
+  const [signer, setSigner] = useState(null);
+  const [provider, setProvider] = useState(null);
+  const [contractAddress, setcontractAddress] = useState('');
+  const [tokenId, setTokenId] = useState('');
+  const [tokenURI, setTokenURI] = useState('');
+  const [tokenMetadata, setTokenMetadata] = useState('');
+  const [owner, setOwner] = useState('');
 
-  async function updateAccount() {
-    const accounts = await provider.send('eth_requestAccounts', []);
-    console.log("Available accounts: ", accounts);
-    const account = accounts[0];
-    setAccount(account);
-    
-    const signer = provider.getSigner();
-    setSigner(signer);
-    console.log("Signer: ", signer);
-
-    const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
-    console.log("Contract: ", contract);
-    setContract(contract);
-
-    if (contract){
-      const tokens = await contract.balanceOf(account);
-      console.log("Tokens: ", tokens);
-      setTokens(tokens.toString());
+  useEffect(() => {
+    async function init() {
+      let _provider, _signer;
+      if (window.ethereum == null) {
+        console.log("MetaMask not installed; using read-only defaults")
+        _provider = ethers.getDefaultProvider();
+      } else {
+        _provider = new ethers.BrowserProvider(window.ethereum);
+        _signer = await _provider.getSigner();
+      }
+      setProvider(_provider);
+      setSigner(_signer);
     }
-  }   
-```
+    init();
+  }, []);
 
-Переключите кошелек на другой аккаунт и проверьте баланс токенов. 
-Верните обратно аккаунт владельца смарт-контракта и снова обновите баланс.  
-
-
-Добавьте поле ввода и кнопку для передачи токенов другому аккаунту. 
-
-```js
-<div>
-<label>Send to: 
-    <input type="text" id="address"/>
-</label>
-
-<label>Amount:
-    <input type="text" id="amount"/>
-</label>
-
-<button
-    onClick={(e) => {
-    e.preventDefault();
-    transferToken();
-    }}
-    > Transfer
-</button>
-
-</div>
-```
-
-Добавьте стили в `App.css` 
-```css
-label {
-  display: flex;
-  flex-direction: column;
-  text-transform: uppercase;
-  color: #aaa;
-  margin: 20px;
-}
-
-input[type="text"] {
-  padding: 6px;
-  font-size: 18px;
-}
-```
-
-Добавьте функцию обработки транзакции 
-```js
-  async function transferToken(){
-    const address = document.getElementById("address").value;
-    const amount  = document.getElementById("amount").value;
-    console.log("Signer: ", signer);
-    console.log("Contract: ", contract);
-
-    const trx = await contract.connect(signer).transfer(address, amount);
-    console.log("Transaction: ", trx);
-    await trx.wait();
-    updateAccount();
+  async function awardNFT() {
+    const contract = new ethers.Contract(contractAddress, ABI, signer);
+    try {
+      const tx = await contract.awardItem(signer.getAddress(), tokenURI);
+      await tx.wait();
+      console.log("NFT awarded successfully:", tx);
+      alert("NFT awarded successfully!");
+    } catch (error) {
+      console.error("Error awarding NFT:", error);
+      alert("Failed to award NFT. Make sure the token ID is valid.");
+    }
   }
+
+  async function fetchNFT() {
+    const contract = new ethers.Contract(contractAddress, ABI, provider);
+    try {
+      // Fetch tokenURI and owner address from the contract
+      const uri = await contract.tokenURI(tokenId);
+      const ownerAddress = await contract.ownerOf(tokenId);
+      console.log("Token URI:", uri);
+      console.log("Owner Address:", ownerAddress);
+      // Fetch metadata from the tokenURI
+      const response = await fetch(uri);
+      if (!response.ok) {
+        throw new Error("Failed to fetch metadata from tokenURI");
+      }
+      const metadata = await response.json();
+      console.log("Metadata:", metadata);
+      // Update state with metadata and owner
+      setTokenURI(uri);
+      setTokenMetadata(metadata); 
+      setOwner(ownerAddress);
+    } catch (error) {
+      console.error("Error fetching NFT:", error);
+      alert("Failed to fetch NFT. Make sure the token ID exists and the tokenURI is valid.");
+      setTokenURI("");
+      setTokenMetadata(""); 
+      setOwner("");
+    }
+  }
+
+  return (
+    <div className="App">
+      <label>
+        Contract address:
+        <input
+          type="text"
+          value={contractAddress}
+          onChange={(e) => setcontractAddress(e.target.value)}
+        />
+      </label>
+      <br /><button onClick={awardNFT}>Award NFT</button>
+      <br /><h1>Retrieve NFT</h1>
+      <br /><label>
+        Token ID:
+        <input
+          type="text"
+          value={tokenId}
+          onChange={(e) => setTokenId(e.target.value)}
+        />
+      </label>
+      <br /><button onClick={fetchNFT}>Fetch NFT</button>
+      {tokenURI && (
+        <div>
+          <h2>NFT Details</h2>
+          <img src={tokenMetadata.image} width={100}/>
+          <p><strong>Name:</strong> {tokenMetadata.name}</p>
+          <p><strong>Strength:</strong> {tokenMetadata.strength}</p>
+          <p><strong>Owner:</strong> {owner}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default App;
 ```
+
+Запустите приложение и проверьте его работу. 

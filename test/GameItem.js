@@ -16,9 +16,10 @@ describe("Token contract", function () {
 
     // Award an item to the owner
     const tokenUri = "https://bafybeifdpy3ikwpysuu7gvur232wv2ttzff55warsbpqdqku5hzaejw3ym.ipfs.dweb.link?filename=thor_hammer.txt";
-    
+    const testUri = "Just a test";
+
     await myNftContract.awardItem(player_0.address, tokenUri);
-    await myNftContract.awardItem(player_1.address, "Just a test");
+    await myNftContract.awardItem(player_1.address, testUri);
 
     // Check ownership
     expect(await myNftContract.ownerOf(0)).to.equal(player_0.address);
@@ -26,7 +27,7 @@ describe("Token contract", function () {
 
     // The token URI should be the same as the one we set earlier   
     expect(await myNftContract.tokenURI(0)).to.equal(tokenUri);
-    expect(await myNftContract.tokenURI(1)).to.equal("Just a test");
+    expect(await myNftContract.tokenURI(1)).to.equal(testUri);
 
   });
 });
