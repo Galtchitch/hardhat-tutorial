@@ -35,8 +35,11 @@ function App() {
 
   async function awardNFT() {
     const contract = new ethers.Contract(contractAddress, ABI, signer);
+    // get nft uri from backend
+    const nftUri = "https://bafybeifdpy3ikwpysuu7gvur232wv2ttzff55warsbpqdqku5hzaejw3ym.ipfs.dweb.link?filename=thor_hammer.txt";
+    setTokenURI(nftUri);
     try {
-      const tx = await contract.awardItem(signer.getAddress(), tokenURI);
+      const tx = await contract.awardItem(signer.getAddress(), nftUri);
       await tx.wait();
       console.log("NFT awarded successfully:", tx);
       alert("NFT awarded successfully!");
@@ -51,8 +54,9 @@ function App() {
     try {
       // Fetch tokenURI and owner address from the contract
       const uri = await contract.tokenURI(tokenId);
-      const ownerAddress = await contract.ownerOf(tokenId);
       console.log("Token URI:", uri);
+
+      const ownerAddress = await contract.ownerOf(tokenId);
       console.log("Owner Address:", ownerAddress);
       // Fetch metadata from the tokenURI
       const response = await fetch(uri);
@@ -80,10 +84,12 @@ function App() {
         Contract address:
         <input
           type="text"
+          size="42"
           value={contractAddress}
           onChange={(e) => setcontractAddress(e.target.value)}
         />
       </label>
+
       <br /><button onClick={awardNFT}>Award NFT</button>
       <br /><h1>Retrieve NFT</h1>
       <br /><label>
